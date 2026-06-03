@@ -9,6 +9,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils'; // Import cn utility
+import { User } from '@supabase/supabase-js';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { useSettings } from '@/contexts/SettingsContext';
 
 // Define the schema for the profile update form
 const profileFormSchema = z.object({
@@ -19,8 +23,10 @@ const profileFormSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
 const Dashboard = () => {
+  const { t } = useTranslation();
+  const { settings } = useSettings();
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<{ first_name: string | null; last_name: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -117,15 +123,18 @@ const Dashboard = () => {
   };
 
   if (loading || !user) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    return <div className="flex items-center justify-center min-h-screen">{t('common.loading')}</div>;
   }
 
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
       <div className="w-64 bg-white shadow-md p-4 flex flex-col">
-        <h3 className="text-lg font-semibold mb-4">Mini Apps</h3>
-        <ul className="flex-grow space-y-2"> {/* Added space-y for spacing between buttons */}
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold mb-3">{t('dashboard.miniApps')}</h3>
+          <LanguageSwitcher />
+        </div>
+        <ul className="flex-grow space-y-2">
           <li>
             <Link
               to="/dashboard"
@@ -134,7 +143,7 @@ const Dashboard = () => {
                 "w-full justify-start"
               )}
             >
-              Dashboard
+              {t('nav.dashboard')}
             </Link>
           </li>
           <li>
@@ -145,13 +154,120 @@ const Dashboard = () => {
                 "w-full justify-start"
               )}
             >
-              Notes
+              {t('nav.notes')}
             </Link>
           </li>
-          {/* Add links for future mini-apps here */}
+           <li>
+            <Link
+              to="/gallery"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.gallery')}
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/messaging"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.messaging')}
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/calculator"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.calculator')}
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/todo"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.todo')}
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/pomodoro"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.pomodoro')}
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/password-generator"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.passwordGen')}
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/unit-converter"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.unitConverter')}
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/flashcards"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.flashcards')}
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/language-learning"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              {t('nav.languages')}
+            </Link>
+          </li>
         </ul>
-        <div className="mt-auto">
-           <Button onClick={handleLogout} className="w-full">Logout</Button>
+        <div className="mt-auto space-y-2">
+          <Link
+            to="/settings"
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "w-full justify-start"
+            )}
+          >
+            Settings
+          </Link>
+           <Button onClick={handleLogout} className="w-full">{t('common.logout')}</Button>
         </div>
       </div>
 
@@ -159,7 +275,7 @@ const Dashboard = () => {
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2">
-            Welcome to Your Portal, {profile?.first_name || user.email}!
+            {t('dashboard.title')}, {profile?.first_name || user.email}!
           </h1>
           {profile && profile.first_name && profile.last_name && (
              <p className="text-lg text-gray-700">({user.email})</p>
@@ -167,12 +283,12 @@ const Dashboard = () => {
            {!profile?.first_name && !profile?.last_name && (
              <p className="text-lg text-gray-700">({user.email})</p>
           )}
-          <p className="text-xl text-gray-600 mt-4">This is your central dashboard.</p>
+          <p className="text-xl text-gray-600 mt-4">{t('dashboard.subtitle')}</p>
         </div>
 
         {/* Profile Update Form */}
         <div className="bg-white p-6 rounded shadow-md max-w-md mx-auto">
-          <h2 className="text-2xl font-bold mb-4 text-center">Update Profile</h2>
+          <h2 className="text-2xl font-bold mb-4 text-center">{t('dashboard.updateProfile')}</h2>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -180,9 +296,9 @@ const Dashboard = () => {
                 name="first_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>First Name</FormLabel>
+                    <FormLabel>{t('dashboard.firstName')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="First Name" {...field} />
+                      <Input placeholder={t('dashboard.firstName')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -193,23 +309,23 @@ const Dashboard = () => {
                 name="last_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Last Name</FormLabel>
+                    <FormLabel>{t('dashboard.lastName')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="Last Name" {...field} />
+                      <Input placeholder={t('dashboard.lastName')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full">Update Profile</Button>
+              <Button type="submit" className="w-full">{t('dashboard.updateProfile')}</Button>
             </form>
           </Form>
         </div>
 
         {/* Placeholder for other dashboard content or mini-apps */}
         <div className="mt-8 bg-white p-6 rounded shadow-md max-w-md mx-auto text-center">
-            <h2 className="text-2xl font-bold mb-4">Mini App Content Area</h2>
-            <p className="text-gray-600">This is where content for your mini-apps will appear.</p>
+            <h2 className="text-2xl font-bold mb-4">{t('dashboard.contentArea')}</h2>
+            <p className="text-gray-600">{t('dashboard.contentDescription')}</p>
             {/* Add components for mini-apps here */}
         </div>
 

@@ -99,3 +99,53 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Accent color customization */
+[data-accent="blue"] {
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 217 91% 60%;
+}
+
+[data-accent="purple"] {
+  --primary: 271 91% 65%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 271 91% 65%;
+}
+
+[data-accent="green"] {
+  --primary: 142 71% 45%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 142 71% 45%;
+}
+
+[data-accent="orange"] {
+  --primary: 25 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 25 95% 53%;
+}
+
+[data-accent="pink"] {
+  --primary: 330 81% 60%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 330 81% 60%;
+}
+
+[data-accent="red"] {
+  --primary: 0 84% 60%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 0 84% 60%;
+}
+
+/* Font size customization */
+[data-font-size="small"] {
+  font-size: 14px;
+}
+
+[data-font-size="medium"] {
+  font-size: 16px;
+}
+
+[data-font-size="large"] {
+  font-size: 18px;
+}
