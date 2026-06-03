@@ -1,6 +1,7 @@
-import { supabase } from '@/integrations/supabase/client';
-import { Button, buttonVariants } from '@/components/ui/button'; // Import Button and buttonVariants
-import { useNavigate, Link } from 'react-router-dom'; // Import Link
+import { account, databases } from '@/integrations/appwrite/client';
+import { appwriteConfig } from '@/integrations/appwrite/config';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,7 +9,8 @@ import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { showSuccess, showError } from '@/utils/toast';
-import { cn } from '@/lib/utils'; // Import cn utility
+import { cn } from '@/lib/utils';
+import { ID, Query, Models } from 'appwrite';
 
 // Define the schema for the profile update form
 const profileFormSchema = z.object({
@@ -18,57 +20,75 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
+interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<{ first_name: string | null; last_name: string | null } | null>(null);
+  const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileDocId, setProfileDocId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Function to fetch user profile
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('first_name, last_name')
-      .eq('id', userId)
-      .single();
+    try {
+      const response = await databases.listDocuments(
+        appwriteConfig.databaseId,
+        appwriteConfig.collections.profiles,
+        [Query.equal('user_id', userId)]
+      );
 
-    if (error) {
+      if (response.documents.length > 0) {
+        const doc = response.documents[0];
+        setProfileDocId(doc.$id);
+        setProfile({
+          first_name: doc.first_name || null,
+          last_name: doc.last_name || null,
+        });
+      } else {
+        // No profile exists, create one
+        const newProfile = await databases.createDocument(
+          appwriteConfig.databaseId,
+          appwriteConfig.collections.profiles,
+          ID.unique(),
+          {
+            user_id: userId,
+            first_name: null,
+            last_name: null,
+          }
+        );
+        setProfileDocId(newProfile.$id);
+        setProfile({
+          first_name: null,
+          last_name: null,
+        });
+      }
+    } catch (error: any) {
       console.error('Error fetching profile:', error);
       showError('Failed to load profile data.');
-      setProfile(null); // Ensure profile is null on error
-    } else if (data) {
-      setProfile(data);
+      setProfile(null);
     }
   };
 
   useEffect(() => {
     const fetchUserData = async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUser(user);
-        await fetchProfile(user.id); // Fetch profile when user is set
-      } else {
-        // If no user, redirect to login
+      try {
+        const currentUser = await account.get();
+        setUser(currentUser);
+        await fetchProfile(currentUser.$id);
+      } catch (error) {
+        // If no session, redirect to login
         navigate('/login');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchUserData();
-
-    // Listen for auth state changes (e.g., logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        // User logged out, redirect to login
-        navigate('/login');
-      } else {
-        setUser(session.user);
-        fetchProfile(session.user.id); // Re-fetch profile on user change/login
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, [navigate]);
 
   // Initialize form with profile data once loaded
@@ -86,34 +106,37 @@ const Dashboard = () => {
 
   // Handle profile update form submission
   async function onSubmit(values: ProfileFormValues) {
-    if (!user) return;
+    if (!user || !profileDocId) return;
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        first_name: values.first_name,
-        last_name: values.last_name,
-      })
-      .eq('id', user.id);
+    try {
+      await databases.updateDocument(
+        appwriteConfig.databaseId,
+        appwriteConfig.collections.profiles,
+        profileDocId,
+        {
+          first_name: values.first_name || null,
+          last_name: values.last_name || null,
+        }
+      );
 
-    if (error) {
+      showSuccess('Profile updated successfully!');
+      await fetchProfile(user.$id);
+    } catch (error: any) {
       console.error('Error updating profile:', error);
       showError('Failed to update profile.');
-    } else {
-      showSuccess('Profile updated successfully!');
-      // Re-fetch profile to update state and form values
-      fetchProfile(user.id);
     }
   }
 
   // Handle user logout
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
+    try {
+      await account.deleteSession('current');
+      showSuccess('Logged out successfully!');
+      navigate('/login');
+    } catch (error: any) {
       console.error('Logout error:', error);
       showError('Failed to log out.');
     }
-    // Redirect is handled by the onAuthStateChange listener
   };
 
   if (loading || !user) {
@@ -148,6 +171,50 @@ const Dashboard = () => {
               Notes
             </Link>
           </li>
+           <li>
+            <Link
+              to="/gallery"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              Gallery
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/messaging"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              Messaging
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/calculator"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              Calculator
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/todo"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              To-Do List
+            </Link>
+          </li>
           {/* Add links for future mini-apps here */}
         </ul>
         <div className="mt-auto">
@@ -159,7 +226,7 @@ const Dashboard = () => {
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2">
-            Welcome to Your Portal, {profile?.first_name || user.email}!
+            Welcome to Your Portal, {profile?.first_name || user.name || user.email}!
           </h1>
           {profile && profile.first_name && profile.last_name && (
              <p className="text-lg text-gray-700">({user.email})</p>

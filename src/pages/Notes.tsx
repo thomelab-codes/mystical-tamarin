@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { account, databases } from '@/integrations/appwrite/client';
+import { appwriteConfig } from '@/integrations/appwrite/config';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,8 +12,9 @@ import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { Trash2, Edit } from 'lucide-react'; // Import Trash2 and Edit icons
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"; // Import Dialog components
+import { Trash2, Edit } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ID, Query, Models } from 'appwrite';
 
 // Define the schema for the note form (used for both create and edit)
 const noteFormSchema = z.object({
@@ -23,19 +25,19 @@ const noteFormSchema = z.object({
 type NoteFormValues = z.infer<typeof noteFormSchema>;
 
 interface Note {
-  id: string;
-  user_id: string; // Added user_id for clarity, though not strictly needed for display
+  $id: string;
+  user_id: string;
   title: string;
   content: string | null;
-  created_at: string;
+  $createdAt: string;
 }
 
 const Notes = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
-  const [editingNote, setEditingNote] = useState<Note | null>(null); // State to hold the note being edited
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false); // State to control the edit dialog
+  const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const form = useForm<NoteFormValues>({
     resolver: zodResolver(noteFormSchema),
@@ -58,42 +60,32 @@ const Notes = () => {
   useEffect(() => {
     const fetchUserAndNotes = async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
+      try {
+        const currentUser = await account.get();
+        setUser(currentUser);
 
-      if (user) {
-        const { data, error } = await supabase
-          .from('notes')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+        if (currentUser) {
+          const response = await databases.listDocuments(
+            appwriteConfig.databaseId,
+            appwriteConfig.collections.notes,
+            [
+              Query.equal('user_id', currentUser.$id),
+              Query.orderDesc('$createdAt')
+            ]
+          );
 
-        if (error) {
-          console.error('Error fetching notes:', error);
-          showError('Failed to load notes.');
-        } else if (data) {
-          setNotes(data);
+          setNotes(response.documents as unknown as Note[]);
         }
+      } catch (error: any) {
+        console.error('Error fetching notes:', error);
+        showError('Failed to load notes.');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchUserAndNotes();
-
-    // Optional: Listen for real-time changes if needed later
-    // const subscription = supabase
-    //   .channel('notes')
-    //   .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `user_id=eq.${user?.id}` }, payload => {
-    //     console.log('Change received!', payload);
-    //     // Handle real-time updates to notes list
-    //   })
-    //   .subscribe();
-
-    // return () => {
-    //   subscription.unsubscribe();
-    // };
-
-  }, []); // Empty dependency array means this runs once on mount
+  }, []);
 
   // Handle new note submission
   async function onSubmit(values: NoteFormValues) {
@@ -102,25 +94,24 @@ const Notes = () => {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('notes')
-      .insert([
+    try {
+      const newNote = await databases.createDocument(
+        appwriteConfig.databaseId,
+        appwriteConfig.collections.notes,
+        ID.unique(),
         {
-          user_id: user.id,
+          user_id: user.$id,
           title: values.title,
-          content: values.content,
-        },
-      ])
-      .select() // Select the inserted row to get its data
-      .single(); // Expecting a single row back
+          content: values.content || null,
+        }
+      );
 
-    if (error) {
+      showSuccess('Note created successfully!');
+      setNotes([newNote as unknown as Note, ...notes]);
+      form.reset();
+    } catch (error: any) {
       console.error('Error creating note:', error);
       showError('Failed to create note.');
-    } else if (data) {
-      showSuccess('Note created successfully!');
-      setNotes([data, ...notes]); // Add the new note to the top of the list
-      form.reset(); // Clear the form
     }
   }
 
@@ -131,20 +122,19 @@ const Notes = () => {
       return;
     }
 
-    if (window.confirm('Are you sure you want to delete this note?')) { // Simple confirmation
-      const { error } = await supabase
-        .from('notes')
-        .delete()
-        .eq('id', noteId)
-        .eq('user_id', user.id); // Ensure user can only delete their own notes
+    if (window.confirm('Are you sure you want to delete this note?')) {
+      try {
+        await databases.deleteDocument(
+          appwriteConfig.databaseId,
+          appwriteConfig.collections.notes,
+          noteId
+        );
 
-      if (error) {
+        showSuccess('Note deleted successfully!');
+        setNotes(notes.filter(note => note.$id !== noteId));
+      } catch (error: any) {
         console.error('Error deleting note:', error);
         showError('Failed to delete note.');
-      } else {
-        showSuccess('Note deleted successfully!');
-        // Remove the deleted note from the state
-        setNotes(notes.filter(note => note.id !== noteId));
       }
     }
   };
@@ -162,26 +152,24 @@ const Notes = () => {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('notes')
-      .update({
-        title: values.title,
-        content: values.content,
-      })
-      .eq('id', editingNote.id)
-      .eq('user_id', user.id) // Ensure user can only update their own notes
-      .select() // Select the updated row
-      .single(); // Expecting a single row back
+    try {
+      const updatedNote = await databases.updateDocument(
+        appwriteConfig.databaseId,
+        appwriteConfig.collections.notes,
+        editingNote.$id,
+        {
+          title: values.title,
+          content: values.content || null,
+        }
+      );
 
-    if (error) {
+      showSuccess('Note updated successfully!');
+      setNotes(notes.map(note => note.$id === updatedNote.$id ? updatedNote as unknown as Note : note));
+      setIsEditDialogOpen(false);
+      setEditingNote(null);
+    } catch (error: any) {
       console.error('Error updating note:', error);
       showError('Failed to update note.');
-    } else if (data) {
-      showSuccess('Note updated successfully!');
-      // Update the note in the state
-      setNotes(notes.map(note => note.id === data.id ? data : note));
-      setIsEditDialogOpen(false); // Close the dialog
-      setEditingNote(null); // Clear the editing note state
     }
   }
 
@@ -228,6 +216,50 @@ const Notes = () => {
               )}
             >
               Notes
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/gallery"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              Gallery
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/messaging"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              Messaging
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/calculator"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              Calculator
+            </Link>
+          </li>
+           <li>
+            <Link
+              to="/todo"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start"
+              )}
+            >
+              To-Do List
             </Link>
           </li>
           {/* Add links for future mini-apps here */}
@@ -284,14 +316,14 @@ const Notes = () => {
             <p className="text-center text-gray-600">No notes yet. Create one above!</p>
           ) : (
             notes.map((note) => (
-              <Card key={note.id}>
-                <CardHeader className="flex flex-row items-center justify-between"> {/* Added flex for title and buttons */}
+              <Card key={note.$id}>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>{note.title}</CardTitle>
-                  <div className="flex space-x-2"> {/* Container for buttons */}
+                  <div className="flex space-x-2">
                     <Button
-                      variant="outline" // Use outline variant for edit
+                      variant="outline"
                       size="icon"
-                      onClick={() => handleEditClick(note)} // Open edit dialog
+                      onClick={() => handleEditClick(note)}
                       aria-label="Edit note"
                     >
                       <Edit className="h-4 w-4" />
@@ -299,7 +331,7 @@ const Notes = () => {
                     <Button
                       variant="destructive"
                       size="icon"
-                      onClick={() => handleDeleteNote(note.id)}
+                      onClick={() => handleDeleteNote(note.$id)}
                       aria-label="Delete note"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -308,7 +340,7 @@ const Notes = () => {
                 </CardHeader>
                 <CardContent>
                   <p>{note.content}</p>
-                  <p className="text-sm text-gray-500 mt-2">Created: {new Date(note.created_at).toLocaleDateString()}</p>
+                  <p className="text-sm text-gray-500 mt-2">Created: {new Date(note.$createdAt).toLocaleDateString()}</p>
                 </CardContent>
               </Card>
             ))
